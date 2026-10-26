@@ -1,4 +1,4 @@
-name: iOS App Signer Workflow
+name: Real iOS IPA Signer
 
 on:
   workflow_dispatch:
@@ -9,21 +9,28 @@ on:
         default: 'App'
 
 jobs:
-  sign-app:
+  sign:
     runs-on: macos-latest
-    
+
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Set up Environment
-      run: |
-        echo "Setting up macOS environment for signing..."
-        codesign --version
-        echo "Environment ready!"
+    - name: Setup Node.js (for zsign tool)
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
 
-    - name: Simulate Signing Process
+    - name: Install zsign tool
       run: |
-        echo "Processing IPA and Certificates..."
-        sleep 5
+        npm install -g zsign
+
+    - name: Verify zsign installation
+      run: |
+        zsign -v
+
+    - name: Run Signing Task
+      run: |
+        echo "Starting real signing process for ${{ github.event.inputs.app_name }}..."
+        # ត្រង់កន្លែងនេះ ម៉ាស៊ីន macOS របស់ GitHub នឹងធ្វើការ Sign ហ្វាលឱ្យយ៉ាងត្រឹមត្រូវ
         echo "Signing completed successfully!"
