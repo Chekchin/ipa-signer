@@ -1,0 +1,29 @@
+name: iOS App Signer Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'App Name'
+        required: true
+        default: 'App'
+
+jobs:
+  sign-app:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up Environment
+      run: |
+        echo "Setting up macOS environment for signing..."
+        codesign --version
+        echo "Environment ready!"
+
+    - name: Simulate Signing Process
+      run: |
+        echo "Processing IPA and Certificates..."
+        sleep 5
+        echo "Signing completed successfully!"
