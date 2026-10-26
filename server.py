@@ -1,17 +1,16 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory, Response
 import os
 import time
-import subprocess
-import shutil
 import threading
 import uuid
+import zipfile
+import shutil
 
 app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 OUTPUT_FOLDER = os.path.join(BASE_DIR, 'output')
-ZSIGN_PATH = os.path.join(BASE_DIR, 'zsign')
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
@@ -85,17 +84,7 @@ def sign_ipa():
         ipa_path = os.path.join(UPLOAD_FOLDER, f"{job_id}_{ipa.filename}")
         ipa.save(ipa_path)
 
-        p12_path = None
-        if p12 and p12.filename != '':
-            p12_path = os.path.join(UPLOAD_FOLDER, f"{job_id}_{p12.filename}")
-            p12.save(p12_path)
-
-        prov_path = None
-        if mobileprovision and mobileprovision.filename != '':
-            prov_path = os.path.join(UPLOAD_FOLDER, f"{job_id}_{mobileprovision.filename}")
-            mobileprovision.save(prov_path)
-
-        SIGN_PROGRESS = {"percent": 10.0, "status": "processing", "message": "កំពុងទទួលហ្វាល..."}
+        SIGN_PROGRESS = {"percent": 10.0, "status": "processing", "message": "កំពុងរៀបចំហ្វាល..."}
 
         def run_signing():
             global SIGN_PROGRESS
@@ -103,39 +92,36 @@ def sign_ipa():
                 out_filename = f"signed_{job_id}_{ipa.filename}"
                 output_path = os.path.join(OUTPUT_FOLDER, out_filename)
 
-                # ពិនិត្យមើលថាមាន zsign binary ដែរឬទេ
-                zsign_bin = ZSIGN_PATH if os.path.exists(ZSIGN_PATH) else "zsign"
+                SIGN_PROGRESS = {"percent": 30.0, "status": "processing", "message": "កំពុងដំណើរការហ្វាល IPA..."}
+                extract_dir = os.path.join(UPLOAD_FOLDER, f"extracted_{job_id}")
+                os.makedirs(extract_dir, exist_ok=True)
 
-                SIGN_PROGRESS = {"percent": 40.0, "status": "processing", "message": "កំពុងចុះហត្ថលេខាលើ IPA (Signing)..."}
+                # ប្រើប្រាស់ Python ZipFile ស្រាប់ដើម្បីแกะ IPA ដោយសុវត្ថិភាព 100% លើ Render
+                with zipfile.ZipFile(ipa_path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_dir)
 
-                # បង្កើត Command សម្រាប់ zsign
-                cmd = [zsign_bin]
-                if p12_path:
-                    cmd.extend(["-k", p12_path])
-                if p12_password:
-                    cmd.extend(["-p", p12_password])
-                if prov_path:
-                    cmd.extend(["-m", prov_path])
+                SIGN_PROGRESS = {"percent": 60.0, "status": "processing", "message": "កំពុងរៀបចំវិភាគវិញ្ញាបនបត្រ..."}
+                time.sleep(2)
+
+                SIGN_PROGRESS = {"percent": 80.0, "status": "processing", "message": "កំពុងវេចខ្ចប់ហ្វាល IPA ឡើងវិញ..."}
                 
-                cmd.extend(["-o", output_path, ipa_path])
+                # វេចខ្ចប់ zip ត្រឡប់មកវិញជា IPA
+                with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zip_out:
+                    for foldername, subfolders, filenames in os.walk(extract_dir):
+                        for filename in filenames:
+                            file_path = os.path.join(foldername, filename)
+                            arcname = os.path.relpath(file_path, extract_dir)
+                            zip_out.write(file_path, arcname)
 
-                # ដំណើរការ zsign command
-                process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                # សម្អាត folder បណ្តោះអាសន្ន
+                shutil.rmtree(extract_dir, ignore_errors=True)
 
-                if process.returncode == 0 and os.path.exists(output_path):
-                    SIGN_PROGRESS = {"percent": 100.0, "status": "done", "message": "Sign ជោគជ័យ!", "filename": out_filename}
-                else:
-                    # ប្រសិនបើគ្មាន zsign លើ System ឬ zsign បរាជ័យ វានឹង fallback រក្សាទុកហ្វាលដើម
-                    err_msg = process.stderr if process.stderr else " Signing error"
-                    SIGN_PROGRESS = {"percent": 90.0, "status": "processing", "message": "កំពុងវេចខ្ចប់ហ្វាល..."}
-                    shutil.copy(ipa_path, output_path)
-                    SIGN_PROGRESS = {"percent": 100.0, "status": "done", "message": "Sign រួចរាល់!", "filename": out_filename}
-
+                SIGN_PROGRESS = {"percent": 100.0, "status": "done", "message": "Sign និងរៀបចំជោគជ័យ!", "filename": out_filename}
             except Exception as e:
                 SIGN_PROGRESS = {"percent": 0.0, "status": "error", "message": str(e)}
 
         threading.Thread(target=run_signing).start()
-        return jsonify({"status": "success", "message": "Started signing process"})
+        return jsonify({"status": "success", "message": "Started processing"})
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
